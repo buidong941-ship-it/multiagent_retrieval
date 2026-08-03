@@ -1,0 +1,59 @@
+# ══════════════════════════════════════════════════════════════════
+# YOLOv11 Fine-tuning Configuration
+# ══════════════════════════════════════════════════════════════════
+
+model:
+  # Kích thước model: yolo11n/s/m/l/x.pt
+  # n = nano (nhanh nhất), x = extra-large (chính xác nhất)
+  name: "yolo11l.pt"
+  # Sau khi train:
+  # name: "./outputs/train/weights/best.pt"
+
+training:
+  output_dir: "./outputs"
+  num_epochs: 50
+  batch_size: 16
+  imgsz: 640
+  device: "cuda"
+  workers: 8
+
+  # Learning rate
+  lr0: 0.01       # learning rate ban đầu
+  lrf: 0.01       # learning rate cuối (lr0 * lrf)
+
+  # Augmentation (Ultralytics built-in)
+  augment: true
+  mosaic: 1.0     # mosaic augmentation probability
+  flipud: 0.0
+  fliplr: 0.5
+  degrees: 0.0
+  translate: 0.1
+  scale: 0.5
+
+  # Early stopping
+  patience: 10
+  save_period: 10
+
+# ── Dataset ────────────────────────────────────────────────────────
+# Format Ultralytics YOLO:
+#   data/
+#     images/
+#       train/ *.jpg
+#       val/   *.jpg
+#     labels/
+#       train/ *.txt  (class_id cx cy w h per line, normalized)
+#       val/   *.txt
+data:
+  yaml_path: "./data/dataset.yaml"
+  # Nội dung dataset.yaml:
+  # path: ./data
+  # train: images/train
+  # val: images/val
+  # names:
+  #   0: person
+  #   1: umbrella
+  #   2: vehicle
+  #   ...
+
+export:
+  format: "pt"     # pt | onnx | tensorrt

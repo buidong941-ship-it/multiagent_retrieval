@@ -1,0 +1,92 @@
+# ══════════════════════════════════════════════════════════════════
+# SigLIP2 Fine-tuning Configuration
+# ══════════════════════════════════════════════════════════════════
+#
+# Sau khi train xong, chạy: python export_config.py
+# Rồi copy kết quả vào video_retrieval/.env
+# ══════════════════════════════════════════════════════════════════
+
+# ── Model ──────────────────────────────────────────────────────────
+model:
+  # Model gốc từ HuggingFace
+  name: "google/siglip2-so400m-patch14-384"
+  # Nếu muốn dùng model đã fine-tune trước: đổi path ở đây
+  # name: "./outputs/checkpoint-500"
+
+  # Freeze vision encoder → chỉ train text encoder (tiết kiệm VRAM)
+  freeze_vision_encoder: true
+
+  # Dùng float16 để tiết kiệm bộ nhớ GPU
+  use_fp16: true
+
+# ── LoRA (Low-Rank Adaptation) ─────────────────────────────────────
+# LoRA giúp fine-tune với ít VRAM hơn (8GB là đủ)
+lora:
+  enabled: true
+  r: 16              # rank — càng cao càng nhiều tham số, cần VRAM hơn
+  alpha: 32          # scaling factor = alpha / r = 2.0
+  dropout: 0.1
+  # Các layer sẽ được thêm LoRA (trong text encoder)
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "out_proj"
+
+# ── Dataset ────────────────────────────────────────────────────────
+data:
+  # File CSV với 2 cột: image_path, caption
+  # Ví dụ: /data/frames/vid001_frame_000001.jpg,"Một người phụ nữ..."
+  train_csv: "./data/train.csv"
+  val_csv:   "./data/val.csv"     # để trống nếu không có val set
+
+  # Số lượng caption âm tính (negatives) mỗi sample trong batch
+  # Dùng in-batch negatives → không cần label thêm
+  use_in_batch_negatives: true
+
+  # Image augmentation
+  augment: true
+  image_size: 384   # SigLIP2-so400m dùng 384×384
+
+# ── Training ───────────────────────────────────────────────────────
+training:
+  output_dir: "./outputs"
+
+  # Số epoch — competition data thường nhỏ, 5-10 epoch là đủ
+  num_epochs: 10
+
+  # Batch size — giảm nếu bị OOM, tăng gradient_accumulation_steps
+  batch_size: 16
+  gradient_accumulation_steps: 4   # effective batch = 16 × 4 = 64
+
+  # Learning rate
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1                # 10% đầu là warmup
+
+  # Scheduler
+  lr_scheduler: "cosine"           # cosine | linear | constant
+
+  # Lưu checkpoint
+  save_steps: 100
+  eval_steps: 100
+  logging_steps: 10
+
+  # Early stopping nếu val loss không cải thiện
+  early_stopping_patience: 3
+
+  # Seed để reproduce
+  seed: 42
+
+# ── Loss ───────────────────────────────────────────────────────────
+loss:
+  # SigLIP loss (sigmoid binary cross-entropy)
+  # Tốt hơn InfoNCE khi batch size nhỏ
+  type: "siglip"     # "siglip" | "infonce"
+  temperature: 0.07  # chỉ dùng cho infonce
+
+# ── Hardware ───────────────────────────────────────────────────────
+hardware:
+  device: "cuda"
+  num_workers: 4       # DataLoader workers
+  pin_memory: true

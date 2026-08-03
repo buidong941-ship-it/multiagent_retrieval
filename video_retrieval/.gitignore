@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Data and Artifacts (DO NOT PUSH)
+data/
+*.pt
+*.onnx
+*.db
+test_*.db/
+api_response.json
+test_results.json
+test_results_images/
+
+# Editor and IDEs
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Kaggle outputs
+data_bundle.zip

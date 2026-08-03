@@ -1,0 +1,39 @@
+# ============================
+# Root .gitignore for AIC 2025
+# ============================
+
+# 1. Global Data Directories (Heavy files)
+Data/
+video_retrieval/data/
+video_retrieval/*.pt
+video_retrieval/*.onnx
+model_training/data/
+
+# 2. Python & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+env/
+
+# 3. Node.js (Frontend)
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/*.local
+
+# 4. Logs and Test Artifacts
+logs/
+*.log
+video_retrieval/test_results.json
+video_retrieval/test_results_images/
+data_bundle.zip
+
+# 5. IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+*.swp

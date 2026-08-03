@@ -1,0 +1,53 @@
+# ══════════════════════════════════════════════════════════════════
+# PaddleOCR Fine-tuning Configuration
+# ══════════════════════════════════════════════════════════════════
+#
+# PaddleOCR có 2 stage:
+#   1. Detection (DBNet++) — detect vị trí text
+#   2. Recognition (SVTR)  — đọc text trong vùng đó
+#
+# Thường chỉ cần fine-tune Recognition nếu dataset có chữ đặc biệt
+# (logo, font lạ, chữ nghiêng...)
+# ══════════════════════════════════════════════════════════════════
+
+model:
+  lang: "vi"        # ngôn ngữ
+  use_gpu: true
+
+  # Stage muốn fine-tune: "det" | "rec" | "both"
+  stage: "rec"
+
+  # Model detection (DBNet++)
+  det_model_dir: null   # null = dùng model mặc định từ PaddleOCR
+  # det_model_dir: "./outputs/det/best_model"
+
+  # Model recognition (SVTR-LCNet)
+  rec_model_dir: null
+  # rec_model_dir: "./outputs/rec/best_model"
+
+training:
+  output_dir: "./outputs"
+  num_epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+
+data:
+  # Format cho recognition:
+  #   train_list.txt:
+  #     path/to/crop_img.jpg\ttext_label
+  #   Ví dụ:
+  #     ./data/rec/train/img001.jpg	Highlands Coffee
+  #     ./data/rec/train/img002.jpg	Trà sữa Gong Cha
+
+  rec_train_list: "./data/rec/train_list.txt"
+  rec_val_list:   "./data/rec/val_list.txt"
+
+  # Character dict — thêm ký tự đặc biệt nếu cần
+  character_dict: "./data/vi_dict.txt"
+
+  # Image size cho recognition
+  rec_image_shape: "3, 32, 320"
+
+note: |
+  PaddleOCR fine-tuning cần PaddlePaddle + PaddleOCR source code.
+  Xem: https://paddlepaddle.github.io/PaddleOCR/latest/ppocr/model_train/recognition.html

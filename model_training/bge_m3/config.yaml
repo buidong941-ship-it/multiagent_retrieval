@@ -1,0 +1,69 @@
+# ══════════════════════════════════════════════════════════════════
+# BGE-M3 Fine-tuning Configuration
+# ══════════════════════════════════════════════════════════════════
+
+# ── Model ──────────────────────────────────────────────────────────
+model:
+  name: "BAAI/bge-m3"
+  # Sau khi train: đổi thành đường dẫn local
+  # name: "./outputs/best"
+
+  pooling: "cls"         # Dùng CLS token làm embedding
+  normalize: true        # L2-normalize output
+  use_fp16: true
+  max_length: 512        # Số token tối đa
+
+# ── LoRA (tùy chọn — tắt để full fine-tune) ───────────────────────
+lora:
+  enabled: false         # BGE-M3 thường đủ VRAM để full fine-tune
+  r: 16
+  alpha: 32
+  dropout: 0.1
+  target_modules: ["query", "key", "value"]
+
+# ── Dataset ────────────────────────────────────────────────────────
+data:
+  # Format JSONL — mỗi dòng là 1 JSON:
+  # {"query": "Highlands Coffee ở đâu", "pos": ["Highlands Coffee Việt Nam"], "neg": ["The Coffee House"]}
+  #
+  # Cách tạo dữ liệu:
+  #   query  = câu truy vấn tiếng Việt của người dùng (từ cuộc thi)
+  #   pos    = OCR text của frame đúng
+  #   neg    = OCR text của frame sai (hard negatives tốt hơn random)
+  train_jsonl: "./data/train.jsonl"
+  val_jsonl:   "./data/val.jsonl"
+
+  # Số negatives mỗi sample (ngoài in-batch negatives)
+  num_hard_negatives: 1
+
+# ── Training ───────────────────────────────────────────────────────
+training:
+  output_dir: "./outputs"
+  num_epochs: 5
+
+  batch_size: 32
+  gradient_accumulation_steps: 2   # effective = 32 × 2 = 64
+
+  learning_rate: 3.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+
+  lr_scheduler: "cosine"
+  save_steps: 50
+  eval_steps: 50
+  logging_steps: 10
+
+  early_stopping_patience: 3
+  seed: 42
+
+# ── Loss ───────────────────────────────────────────────────────────
+loss:
+  # MultipleNegativesRankingLoss (InfoNCE với negatives được chọn)
+  type: "mnrl"           # mnrl | triplet | cosine
+  temperature: 0.05      # nhỏ hơn CLIP vì text-text khó hơn image-text
+
+# ── Hardware ───────────────────────────────────────────────────────
+hardware:
+  device: "cuda"
+  num_workers: 4
+  pin_memory: true
