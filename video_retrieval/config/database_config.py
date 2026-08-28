@@ -114,6 +114,27 @@ class FaissConfig(BaseConfig):
         description="Whether to use GPU acceleration for FAISS if available",
     )
 
+    # IVF (Approximate Search) parameters
+    use_ivf: bool = Field(
+        default=True,
+        description="If True, convert FlatIP index to IVFFlat in-memory for faster approximate search",
+    )
+    ivf_nlist: int = Field(
+        default=256,
+        description="Number of Voronoi clusters for IVF index. Rule of thumb: sqrt(ntotal). "
+                    "Higher = faster search but less recall. Typical: 64-4096.",
+    )
+    ivf_nprobe: int = Field(
+        default=32,
+        description="Number of clusters to visit at query time. Higher = better recall, slower. "
+                    "Typical: nlist/8 to nlist/4.",
+    )
+    ivf_min_vectors: int = Field(
+        default=10000,
+        description="Minimum number of vectors to trigger IVF conversion. "
+                    "Below this threshold, FlatIP is used (faster for small datasets).",
+    )
+
     # Embedding dimensions
     clip_dim: int = Field(default=1152, description="SigLIP2-so400m embedding dim")
     ocr_dim: int = Field(default=1024, description="BGE-M3 dense embedding dim")

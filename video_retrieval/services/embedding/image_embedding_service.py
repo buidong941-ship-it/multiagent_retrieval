@@ -71,7 +71,7 @@ class ImageEmbeddingService:
         meta_db: MetadataDatabase,
         backend: EmbeddingBackend = EmbeddingBackend.SIGLIP2,
         collection_name: str = "clip_embeddings",
-        db_id_field: str = "milvus_clip_id",
+        db_id_field: Optional[str] = "milvus_clip_id",
         embedder: Optional[BaseEmbedder] = None,
     ) -> None:
         """
@@ -84,6 +84,8 @@ class ImageEmbeddingService:
             backend:   The backend to use if embedder is not provided.
             collection_name: Name of the vector DB collection.
             db_id_field: Name of the field in SQLite to store the vector ID.
+                Set to None for a backend such as Jina that has no dedicated
+                numeric-ID column in the SQLite schema.
             embedder:  Optional pre-built embedder (for dependency injection).
         """
         self.config = config
@@ -124,6 +126,7 @@ class ImageEmbeddingService:
         all_kept_frames = []
         kept_count = 0
         skipped_count = 0
+        invalid_count = 0
         milvus_counter = id_offset  # running counter to avoid ID collisions
 
         log.info(f"Embedding {total} frames | batch_size={batch_size}")
@@ -151,6 +154,14 @@ class ImageEmbeddingService:
             for i, emb in enumerate(embeddings):
                 frame = batch[i]
                 vid = frame.video_id
+
+                # Never persist NaN/Inf vectors: FAISS can store them, but they
+                # make similarity search unreliable and silently lower recall.
+                emb = np.asarray(emb, dtype=np.float32)
+                if not np.isfinite(emb).all():
+                    invalid_count += 1
+                    log.warning(f"Skipping invalid embedding for {frame.frame_id}")
+                    continue
                 
                 # Frame filtering: check similarity with last kept embedding for this video if dedup is enabled
                 if perform_dedup and self.config.enable_dedup and vid in self._last_kept_embeddings:
@@ -191,15 +202,19 @@ class ImageEmbeddingService:
             )
 
             # Update database id in SQLite
-            for frame, milvus_id in zip(filtered_frames, filtered_milvus_ids):
-                await self.meta_db.upsert_frame(
-                    {"frame_id": frame.frame_id, self._db_id_field: milvus_id}
-                )
+            if self._db_id_field:
+                for frame, milvus_id in zip(filtered_frames, filtered_milvus_ids):
+                    await self.meta_db.upsert_frame(
+                        {"frame_id": frame.frame_id, self._db_id_field: milvus_id}
+                    )
             all_kept_frames.extend(filtered_frames)
 
         # Flush collection after all inserts
         self.vector_db.flush(self._collection)
-        log.info(f"Embedding complete | kept={kept_count}, skipped(similar)={skipped_count}, total_input={total}")
+        log.info(
+            f"Embedding complete | kept={kept_count}, skipped(similar)={skipped_count}, "
+            f"skipped(invalid)={invalid_count}, total_input={total}"
+        )
         return all_kept_frames
 
     def encode_query(self, query_text: str) -> np.ndarray:

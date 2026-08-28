@@ -7,6 +7,9 @@ Design Decision:
     - Maintains an in-memory & persisted metadata store mapping internal numeric IDs to payload dicts.
     - Maintains a frame_id to numeric ID index for fast string-based vector lookups.
     - Saves index files (.faiss) and metadata files (.pkl) to disk.
+    - Supports in-memory IVFFlat conversion for approximate nearest neighbor search.
+      The .faiss files on disk always remain FlatIP (safe for add/delete/reconstruct).
+      IVF conversion happens at load time when ntotal >= ivf_min_vectors.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ class FaissVectorDatabase(BaseVectorDatabase):
         frame_id_to_id: Dict mapping collection_name -> dict[str, int]
     """
 
-    def __init__(self, config: FaissConfig) -> None:
+    def __init__(self, config: FaissConfig, auto_load: bool = True) -> None:
         self.config = config
         self.index_dir = Path(config.index_dir)
         self.index_dir.mkdir(parents=True, exist_ok=True)
@@ -47,8 +50,10 @@ class FaissVectorDatabase(BaseVectorDatabase):
         self.frame_id_to_id: Dict[str, Dict[str, int]] = {}
         self.vectors_store: Dict[str, Dict[int, np.ndarray]] = {}
 
-        # Auto-load existing collections in index_dir
-        self._load_all_existing()
+        # Auto-load existing collections in index_dir unless a maintenance task
+        # deliberately needs to work on a single collection only.
+        if auto_load:
+            self._load_all_existing()
 
     def _get_collection_paths(self, collection_name: str) -> tuple[Path, Path]:
         """Return paths for the index file and metadata file."""
@@ -61,6 +66,93 @@ class FaissVectorDatabase(BaseVectorDatabase):
         for faiss_file in self.index_dir.glob("*.faiss"):
             collection_name = faiss_file.stem
             self.load_collection(collection_name)
+
+    def _maybe_convert_to_ivf(self, collection_name: str) -> None:
+        """
+        Convert a loaded FlatIP index to IVFFlat in-memory for faster approximate search.
+
+        Strategy:
+            - Extract all vectors from the flat index via reconstruct_n.
+            - Build IndexIVFFlat with nlist clusters, train it, add all vectors back.
+            - Wrap in IndexIDMap2 to preserve explicit int64 ID mapping.
+            - Only triggered when use_ivf=True AND ntotal >= ivf_min_vectors.
+            - The .faiss file on disk stays as FlatIP (safe for incremental inserts).
+        """
+        if not self.config.use_ivf:
+            return
+
+        flat_index = self.indices.get(collection_name)
+        if flat_index is None:
+            return
+
+        ntotal = flat_index.ntotal
+        if ntotal < self.config.ivf_min_vectors:
+            log.info(
+                f"[IVF] '{collection_name}' has {ntotal} vectors "
+                f"(< threshold {self.config.ivf_min_vectors}). Keeping FlatIP."
+            )
+            return
+
+        # Determine nlist: clamp to [16, ntotal // 4] so training always succeeds
+        nlist = min(self.config.ivf_nlist, max(16, ntotal // 4))
+        nprobe = min(self.config.ivf_nprobe, nlist)
+
+        try:
+            # Step 1: Extract all (id, vector) pairs from the existing IDMap2 index
+            log.info(
+                f"[IVF] Converting '{collection_name}' ({ntotal} vectors) to "
+                f"IVFFlat (nlist={nlist}, nprobe={nprobe})..."
+            )
+
+            # Reconstruct all vectors from the flat sub-index
+            # IndexIDMap2.index gives us the underlying FlatIP
+            sub_index = faiss.downcast_index(flat_index.index)
+            all_vectors = sub_index.reconstruct_n(0, sub_index.ntotal).copy()
+
+            # Retrieve stored IDs (IndexIDMap2 exposes id_map)
+            id_map = faiss.vector_to_array(flat_index.id_map).copy()  # int64 array
+
+            dim = all_vectors.shape[1]
+
+            # Step 2: Build IVFFlat index
+            metric = faiss.METRIC_L2 if self.config.metric_type.upper() == "L2" else faiss.METRIC_INNER_PRODUCT
+            quantizer = faiss.IndexFlat(dim, metric)
+            ivf_base = faiss.IndexIVFFlat(quantizer, dim, nlist, metric)
+
+            # Step 3: Train with all vectors
+            ivf_base.train(all_vectors)
+
+            # Step 4: Wrap with IDMap2 and add vectors with their original IDs
+            ivf_idmap = faiss.IndexIDMap2(ivf_base)
+            ivf_idmap.add_with_ids(all_vectors, id_map)
+
+            # Step 5: Enable DirectMap so reconstruct(id) works on the IVF index.
+            # This is REQUIRED for get_embeddings_by_ids() and neighbor reranking.
+            # make_direct_map() must be called AFTER add_with_ids().
+            try:
+                faiss.downcast_index(ivf_idmap.index).make_direct_map()
+                log.info(f"[IVF] DirectMap enabled for '{collection_name}' (reconstruct supported).")
+            except Exception as dm_exc:
+                log.warning(f"[IVF] make_direct_map() failed for '{collection_name}': {dm_exc}. "
+                            f"reconstruct(id) will not work but search is unaffected.")
+
+            # Step 6: Set nprobe for query time
+            faiss.downcast_index(ivf_idmap.index).nprobe = nprobe
+
+            # Replace in-memory index (disk file is NOT touched)
+            self.indices[collection_name] = ivf_idmap
+            self._ivf_nprobe: dict[str, int] = getattr(self, "_ivf_nprobe", {})
+            self._ivf_nprobe[collection_name] = nprobe
+
+            log.info(
+                f"[IVF] '{collection_name}' converted successfully. "
+                f"Approx speedup: ~{nlist // nprobe}x over FlatIP."
+            )
+        except Exception as exc:
+            log.warning(
+                f"[IVF] Conversion failed for '{collection_name}': {exc}. "
+                f"Falling back to FlatIP."
+            )
 
     def load_collection(self, collection_name: str) -> None:
         """Load collection index and metadata from disk if present."""
@@ -82,6 +174,8 @@ class FaissVectorDatabase(BaseVectorDatabase):
                 log.info(
                     f"Successfully loaded '{collection_name}' with {index.ntotal} vectors."
                 )
+                # Attempt in-memory IVF conversion for faster approximate search
+                self._maybe_convert_to_ivf(collection_name)
             except Exception as e:
                 log.error(f"Failed to load FAISS collection '{collection_name}': {e}")
         else:
@@ -149,6 +243,8 @@ class FaissVectorDatabase(BaseVectorDatabase):
         ids_array = np.array(ids, dtype=np.int64)
 
         # Add to FAISS index
+        # NOTE: If IVF was applied in-memory, new vectors go into the IVF index directly.
+        # The disk file (.faiss) will be flushed as FlatIP on next flush() call.
         index.add_with_ids(embeddings_f32, ids_array)
 
         # Store metadata
@@ -191,6 +287,15 @@ class FaissVectorDatabase(BaseVectorDatabase):
         meta_dict = self.metadata_store[collection_name]
 
         query_f32 = np.ascontiguousarray(query_vector.reshape(1, -1), dtype=np.float32)
+
+        # Ensure nprobe is set on IVF index at search time (survives re-use across calls)
+        try:
+            ivf_sub = faiss.downcast_index(index.index)
+            stored_nprobe = getattr(self, "_ivf_nprobe", {}).get(collection_name)
+            if stored_nprobe and hasattr(ivf_sub, "nprobe"):
+                ivf_sub.nprobe = stored_nprobe
+        except Exception:
+            pass
 
         # Request extra if filter_expr is supplied to handle filtered post-processing
         search_k = min(top_k * 5 if filter_expr else top_k, index.ntotal)
@@ -251,21 +356,41 @@ class FaissVectorDatabase(BaseVectorDatabase):
             return embeddings_map
 
         frame_id_to_id = self.frame_id_to_id.get(collection_name, {})
+
+        # Check if underlying index is IVF (needs DirectMap for reconstruct)
+        # Collect all IDs first, then try batch reconstruct, fall back to per-ID
+        pk_to_key: dict[int, str] = {}
         for needed_id in needed_list:
             if isinstance(needed_id, str) and needed_id in frame_id_to_id:
                 pk = frame_id_to_id[needed_id]
             elif isinstance(needed_id, int):
                 pk = needed_id
             else:
-                pk = -1
+                continue
+            pk_to_key[pk] = str(needed_id)
 
-            if pk != -1:
+        if not pk_to_key:
+            return embeddings_map
+
+        # Try fast batch reconstruct first
+        pks = list(pk_to_key.keys())
+        try:
+            ids_array = np.array(pks, dtype=np.int64)
+            # reconstruct_batch writes into a pre-allocated buffer
+            dim = index.d
+            out = np.empty((len(pks), dim), dtype=np.float32)
+            index.reconstruct_batch(len(pks), ids_array, out)
+            for i, pk in enumerate(pks):
+                embeddings_map[pk_to_key[pk]] = out[i]
+        except Exception:
+            # Batch reconstruct not supported (e.g. IVF without DirectMap) —
+            # fall back to per-frame reconstruct which IS supported with DirectMap.
+            log.debug(f"reconstruct_batch unavailable for '{collection_name}', using per-frame reconstruct.")
+            for pk, key in pk_to_key.items():
                 try:
-                    # Reconstruct embedding vector directly from FAISS index using ID
                     vec = index.reconstruct(int(pk))
-                    embeddings_map[str(needed_id)] = np.array(vec, dtype=np.float32)
-                except Exception as e:
-                    # Ignore if ID not found in index
+                    embeddings_map[key] = np.array(vec, dtype=np.float32)
+                except Exception:
                     pass
 
         return embeddings_map
@@ -303,7 +428,12 @@ class FaissVectorDatabase(BaseVectorDatabase):
         return 0
 
     def flush(self, collection_name: Optional[str] = None) -> None:
-        """Persist index and metadata to disk."""
+        """Persist index and metadata to disk.
+
+        IMPORTANT: If the in-memory index was converted to IVF, we reconstruct
+        a clean FlatIP index before saving so the disk file stays portable
+        and supports future reconstruct/delete/add operations.
+        """
         collections_to_save = (
             [collection_name] if collection_name else list(self.indices.keys())
         )
@@ -313,7 +443,28 @@ class FaissVectorDatabase(BaseVectorDatabase):
                 index_path, meta_path = self._get_collection_paths(col)
                 log.info(f"Flushing FAISS collection '{col}' to disk at {index_path}")
 
-                faiss.write_index(self.indices[col], str(index_path))
+                # If the current in-memory index is IVF, reconstruct a FlatIP for disk
+                index_to_save = self.indices[col]
+                try:
+                    sub = faiss.downcast_index(index_to_save.index)
+                    if isinstance(sub, faiss.IndexIVFFlat):
+                        log.info(f"[IVF] Reconstructing FlatIP index for disk flush of '{col}'...")
+                        ntotal = index_to_save.ntotal
+                        id_map = faiss.vector_to_array(index_to_save.id_map).copy()
+                        # Reconstruct all vectors from IVF sub-index
+                        all_vecs = np.vstack(
+                            [sub.reconstruct(int(i)) for i in id_map]
+                        ).astype(np.float32)
+                        dim = all_vecs.shape[1]
+                        metric = faiss.METRIC_L2 if self.config.metric_type.upper() == "L2" else faiss.METRIC_INNER_PRODUCT
+                        flat_base = faiss.IndexFlat(dim, metric)
+                        flat_save = faiss.IndexIDMap2(flat_base)
+                        flat_save.add_with_ids(all_vecs, id_map)
+                        index_to_save = flat_save
+                except Exception as exc:
+                    log.debug(f"[IVF] Flush conversion skipped for '{col}': {exc}")
+
+                faiss.write_index(index_to_save, str(index_path))
 
                 save_payload = {
                     "metadata": self.metadata_store.get(col, {}),
