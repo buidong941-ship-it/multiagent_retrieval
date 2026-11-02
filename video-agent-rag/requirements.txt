@@ -1,6 +1,0 @@
-langchain
-langchain-core
-langchain-ollama
-langgraph
-pydantic
-pydantic-settings
