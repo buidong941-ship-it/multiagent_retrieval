@@ -2,7 +2,7 @@
 Branch A: CLIP (SigLIP2) vector retrieval.
 
 Uses the SigLIP2 text encoder to embed the (translated) query,
-then performs ANN search in Milvus clip_embeddings collection.
+then performs ANN search in the FAISS clip_embeddings collection.
 Returns top-K frames with cosine similarity scores.
 """
 
@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from config.database_config import MilvusConfig
 from config.retrieval_config import RetrievalConfig
-from database.milvus.milvus_client import MilvusVectorDatabase
 from interfaces.base_interfaces import (
     BaseRetrievalBranch,
+    BaseVectorDatabase,
     ParsedQuery,
     RetrievalResult,
 )
@@ -26,25 +25,25 @@ log = get_logger(__name__)
 
 class CLIPRetrievalBranch(BaseRetrievalBranch):
     """
-    Retrieval Branch A: SigLIP2 text → Milvus ANN search.
+    Retrieval Branch A: SigLIP2 text → FAISS ANN search.
 
     Process:
         1. Use translated_query (English) for better CLIP alignment.
         2. Encode with SigLIP2 text encoder → 1152-dim vector.
-        3. ANN search in Milvus clip_embeddings.
+        3. ANN search in FAISS clip_embeddings.
         4. Return top_k results with normalized cosine scores.
 
     Attributes:
         config:         RetrievalConfig.
         embedding_svc:  ImageEmbeddingService (provides text encoder).
-        vector_db:      MilvusVectorDatabase.
+        vector_db:      BaseVectorDatabase.
     """
 
     def __init__(
         self,
         config: RetrievalConfig,
         embed_svcs: list[ImageEmbeddingService],
-        vector_db: MilvusVectorDatabase,
+        vector_db: BaseVectorDatabase,
     ) -> None:
         self.config = config
         self.embed_svcs = embed_svcs

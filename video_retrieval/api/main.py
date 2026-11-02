@@ -35,7 +35,6 @@ from interfaces.base_interfaces import RetrievalResult
 from pipelines.offline_pipeline import OfflinePipeline
 from pipelines.online_pipeline import OnlinePipeline
 from services.embedding.image_embedding_service import ImageEmbeddingService
-from services.ocr.ocr_service import OCRService
 from utils.logging_utils import get_logger, setup_logging
 
 log = get_logger(__name__)
@@ -80,15 +79,12 @@ async def lifespan(app: FastAPI):
     except FileNotFoundError:
         log.warning("BM25 index not found — OCR BM25 branch will return empty results")
 
-    ocr_svc = OCRService(settings.ocr, vector_db, meta_db, bm25_index=bm25)
-
     # Online pipeline
     _online_pipeline = OnlinePipeline(
         settings=settings,
         meta_db=meta_db,
         vector_db=vector_db,
         embed_svcs=embed_svcs,
-        ocr_svc=ocr_svc,
         bm25_index=bm25,
     )
 

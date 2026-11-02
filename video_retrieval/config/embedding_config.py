@@ -5,8 +5,8 @@ Design Decision:
     - SigLIP2 is the default because it supports multilingual text
       natively and has better zero-shot performance than CLIP on
       fine-grained tasks (Google Research, 2024).
-    - OpenCLIP is the fallback: more community fine-tunes available.
-    - Both produce L2-normalized embeddings → cosine similarity
+    - Jina CLIP v2 and BEiT-3 run alongside as extra backends.
+    - All produce L2-normalized embeddings → cosine similarity
       is just a dot product after normalization.
 """
 
@@ -22,7 +22,6 @@ from config.base_config import BaseConfig
 
 class EmbeddingBackend(str, Enum):
     SIGLIP2 = "siglip2"
-    OPENCLIP = "openclip"
     JINA = "jina"
     BEIT3 = "beit3"
 
@@ -51,16 +50,6 @@ class EmbeddingConfig(BaseConfig):
     jina_model_name: str = Field(
         default="jinaai/jina-clip-v2",
         description="HuggingFace model ID for Jina CLIP v2",
-    )
-
-    # OpenCLIP settings
-    openclip_model_name: str = Field(
-        default="ViT-L-14",
-        description="OpenCLIP model architecture",
-    )
-    openclip_pretrained: str = Field(
-        default="datacomp_xl_s13b_b90k",
-        description="OpenCLIP pretrained weights tag",
     )
 
     # Runtime

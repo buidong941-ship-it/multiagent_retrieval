@@ -1,21 +1,16 @@
 """
 Branch B: OCR BM25 keyword search.
-Branch C: OCR embedding (BGE-M3) vector search.
 """
 
 from __future__ import annotations
 
-import numpy as np
-
 from config.retrieval_config import RetrievalConfig
 from database.bm25.bm25_index import BM25OcrIndex
-from database.milvus.milvus_client import MilvusVectorDatabase
 from interfaces.base_interfaces import (
     BaseRetrievalBranch,
     ParsedQuery,
     RetrievalResult,
 )
-from services.ocr.ocr_service import OCRService
 from utils.logging_utils import get_logger
 
 log = get_logger(__name__)
@@ -105,90 +100,4 @@ class OCRBm25Branch(BaseRetrievalBranch):
             )
 
         log.info(f"BM25 branch: {len(results)} results")
-        return results
-
-
-class OCREmbeddingBranch(BaseRetrievalBranch):
-    """
-    Retrieval Branch C: BGE-M3 embedding search over OCR text vectors.
-
-    Process:
-        1. Encode the OCR query text using BGE-M3 text encoder.
-        2. Search Milvus ocr_embeddings collection.
-        3. Return top_k frames with cosine similarity scores.
-
-    Better than BM25 for:
-        - Semantic OCR matching (synonym handling)
-        - Partial text matches
-        - Cross-lingual queries
-
-    Attributes:
-        config:    RetrievalConfig.
-        ocr_svc:   OCRService (provides BGE-M3 text encoder).
-        vector_db: MilvusVectorDatabase.
-    """
-
-    def __init__(
-        self,
-        config: RetrievalConfig,
-        ocr_svc: OCRService,
-        vector_db: MilvusVectorDatabase,
-    ) -> None:
-        self.config = config
-        self.ocr_svc = ocr_svc
-        self.vector_db = vector_db
-
-    @property
-    def branch_name(self) -> str:
-        return "ocr_embed"
-
-    async def retrieve(
-        self,
-        query: ParsedQuery,
-        top_k: int,
-    ) -> list[RetrievalResult]:
-        """
-        OCR embedding vector search.
-
-        Args:
-            query:  ParsedQuery.
-            top_k:  Max results.
-
-        Returns:
-            List of RetrievalResult.
-        """
-        if query.ocr_text:
-            search_str = " ".join(query.ocr_text)
-        else:
-            search_str = query.original_query
-
-        log.debug(f"OCR embed search: '{search_str}'")
-
-        query_vector = self.ocr_svc.encode_query(search_str)
-
-        hits = self.vector_db.search(
-            collection_name="ocr_embeddings",
-            query_vector=query_vector,
-            top_k=top_k,
-        )
-
-        results: list[RetrievalResult] = []
-        for hit in hits:
-            parts = hit["frame_id"].rsplit("_frame_", 1)
-            video_id = hit.get("video_id", parts[0] if len(parts) == 2 else "")
-            frame_idx = int(parts[1]) if len(parts) == 2 else 0
-
-            results.append(
-                RetrievalResult(
-                    frame_id=hit["frame_id"],
-                    video_id=video_id,
-                    frame_idx=frame_idx,
-                    timestamp=float(hit.get("timestamp", 0.0)),
-                    frame_path="",
-                    score=float(hit.get("score", 0.0)),
-                    source=self.branch_name,
-                )
-            )
-
-        log.info(f"OCR embed branch: {len(results)} results")
         return results

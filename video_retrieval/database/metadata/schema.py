@@ -101,7 +101,6 @@ class Frame(Base):
     __table_args__ = (
         UniqueConstraint("video_id", "frame_idx", name="uq_video_frame"),
         Index("ix_frames_video_timestamp", "video_id", "timestamp"),
-        Index("ix_frames_frame_id", "frame_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

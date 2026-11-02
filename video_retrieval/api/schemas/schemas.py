@@ -38,7 +38,7 @@ class RetrievalRequest(BaseModel):
     )
     mode: str = Field(
         default="fusion",
-        description="Retrieval mode: 'fusion', 'clip', 'siglip_jina_sequence', 'siglip_jina_parallel', 'ocr_bm25', 'ocr_embed', 'object', 'action', 'direct_ocr'",
+        description="Retrieval mode: 'fusion', 'clip', 'siglip_jina_sequence', 'siglip_jina_parallel', 'ocr_bm25', 'object', 'direct_ocr', 'agent'",
     )
 
 

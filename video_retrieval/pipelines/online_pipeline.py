@@ -23,25 +23,18 @@ from interfaces.base_interfaces import BaseVectorDatabase, ParsedQuery, Retrieva
 from query_parser.parser_service import LLMQueryParser
 from retrieval.branches.clip_branch import CLIPRetrievalBranch
 from retrieval.branches.object_branch import ObjectDetectionBranch
-from retrieval.branches.ocr_branches import OCRBm25Branch, OCREmbeddingBranch
-from retrieval.fusion.fusion_service import RRFFusion, WeightedFusion, SmaxWeightedFusion
+from retrieval.branches.ocr_branches import OCRBm25Branch
+from retrieval.fusion.fusion_service import SmaxWeightedFusion
 from retrieval.temporal.temporal_refinement import TemporalRefinement
 from retrieval.reranker.neighbor_reranker import NeighborReranker
 from services.embedding.image_embedding_service import ImageEmbeddingService
-from services.ocr.ocr_service import OCRService
 from utils.logging_utils import get_logger
 
 from agent.hybrid_agent import HybridRetrievalAgent
 from agent.tools.visual_search import VisualSearchTool
 from agent.tools.ocr_search import OCRSearchTool
 from agent.tools.object_search import ObjectSearchTool
-from agent.tools.spatial_reasoning import SpatialReasoningTool
-from agent.tools.temporal_tools import SequenceSearchTool
 from agent.fusion_engine import FusionEngine
-from agent.cross_encoder import CrossEncoderReranker
-from agent.frame_verifier import FrameVerifier
-from agent.neighbor_refiner import NeighborRefiner
-from agent.response_generator import ResponseGenerator
 
 
 log = get_logger(__name__)
@@ -59,9 +52,8 @@ class OnlinePipeline:
         query_parser:  LLMQueryParser.
         clip_branch:   CLIPRetrievalBranch.
         bm25_branch:   OCRBm25Branch.
-        ocr_branch:    OCREmbeddingBranch.
         obj_branch:    ObjectDetectionBranch.
-        fusion:        SmaxWeightedFusion (Default) or RRFFusion.
+        fusion:        SmaxWeightedFusion.
         temporal:      TemporalRefinement.
         reranker:      NeighborReranker.
         meta_db:       MetadataDatabase for result enrichment.
@@ -73,9 +65,7 @@ class OnlinePipeline:
         meta_db: MetadataDatabase,
         vector_db: BaseVectorDatabase,
         embed_svcs: list[ImageEmbeddingService],
-        ocr_svc: OCRService,
         bm25_index: BM25OcrIndex,
-        use_rrf: bool = False,
     ) -> None:
         """
         Initialize OnlinePipeline.
@@ -83,11 +73,9 @@ class OnlinePipeline:
         Args:
             settings:   Global settings.
             meta_db:    SQLite metadata database.
-            vector_db:  Milvus vector database.
+            vector_db:  FAISS vector database.
             embed_svcs: List of Image embedding services.
-            ocr_svc:    OCR service (for OCR embed branch).
             bm25_index: BM25 OCR index (for BM25 branch).
-            use_rrf:    If True, use RRFFusion; else WeightedFusion.
         """
         self.settings = settings
         self.meta_db = meta_db
@@ -101,11 +89,10 @@ class OnlinePipeline:
         # Retrieval branches
         self.clip_branch = CLIPRetrievalBranch(cfg, embed_svcs, vector_db)
         self.bm25_branch = OCRBm25Branch(cfg, bm25_index)
-        # self.ocr_branch = OCREmbeddingBranch(cfg, ocr_svc, vector_db)
         self.obj_branch = ObjectDetectionBranch(cfg, meta_db)
 
         # Fusion
-        self.fusion = RRFFusion(cfg) if use_rrf else SmaxWeightedFusion(cfg)
+        self.fusion = SmaxWeightedFusion(cfg)
 
         # Find text-capable embedding service (SigLIP) for temporal & reranker
         text_embed_svc = next((svc for svc in embed_svcs if svc._collection == "clip_embeddings"), embed_svcs[0])
@@ -128,8 +115,6 @@ class OnlinePipeline:
             "AttributeSearch": VisualSearchTool(self.clip_branch, top_k=cfg.clip_top_k),
             "OCRSearch": OCRSearchTool(self.bm25_branch, top_k=cfg.ocr_bm25_top_k),
             "ObjectSearch": ObjectSearchTool(self.obj_branch, top_k=cfg.object_top_k),
-            "SpatialReasoning": SpatialReasoningTool(self.meta_db),
-            "SequenceSearch": SequenceSearchTool(VisualSearchTool(self.clip_branch), self.meta_db)
         }
         # Tạm thời truyền model là ollama fallback hoặc gemini
         self.hybrid_agent = HybridRetrievalAgent(config={"llm_model": cfg.ollama_model}, tools_map=tools_map, llm_client=self.query_parser._call_llm)
@@ -152,7 +137,8 @@ class OnlinePipeline:
         Args:
             query:  Raw Vietnamese text query from user.
             top_k:  Override final_top_k from config.
-            mode:   Retrieval mode: 'fusion', 'clip', 'ocr_bm25', 'ocr_embed', 'object', 'action', 'direct_ocr'.
+            mode:   Retrieval mode: 'agent', 'fusion', 'clip', 'siglip_jina_sequence',
+                    'siglip_jina_parallel', 'ocr_bm25', 'direct_ocr', 'object'.
             use_temporal: Enable temporal refinement.
 
         Returns:
@@ -294,10 +280,6 @@ class OnlinePipeline:
                     "ObjectSearch": "object"
                 }
                 final_source = source_map.get(c.best_source, "smax_fusion")
-                
-                # Khôi phục nhãn Rerank nếu Candidate này được Reranker cộng điểm
-                if c.metadata.get("rerank_boosted"):
-                    final_source += " + neighbor_rerank"
 
                 agent_results.append(
                     RetrievalResult(
@@ -314,7 +296,7 @@ class OnlinePipeline:
             branch_results["agent_success"] = agent_results
             mode = "agent_success"
         
-        if mode not in ["agent", "agent_success"]:
+        if mode != "agent_success":
             if mode == "direct_ocr":
                 log.info("Step 1: Bypassing LLM parser for direct OCR search...")
                 parsed = ParsedQuery(
@@ -336,21 +318,17 @@ class OnlinePipeline:
                 branch_results["clip"] = await self.clip_branch.retrieve(parsed, cfg.clip_top_k, mode=mode)
             if mode in ["fusion", "ocr_bm25", "direct_ocr"] and (parsed.ocr_text or parsed.original_query):
                 branch_results["ocr_bm25"] = await self.bm25_branch.retrieve(parsed, cfg.ocr_bm25_top_k)
-            # if mode in ["fusion", "ocr_embed"] and (parsed.ocr_text or parsed.original_query):
-            #     branch_results["ocr_embed"] = await self.ocr_branch.retrieve(parsed, cfg.ocr_embed_top_k)
             if mode == "object" or (mode == "fusion" and parsed.objects):
                 if mode == "object" and not parsed.objects:
                     parsed.objects = [query]
                 branch_results["object"] = await self.obj_branch.retrieve(parsed, cfg.object_top_k)
-            # if mode in ["fusion", "action"]:
-            #     branch_results["action"] = await getattr(self, "action_branch").retrieve(parsed, cfg.clip_top_k) if hasattr(self, "action_branch") else []
 
         # Log branch sizes
         for name, results in branch_results.items():
             log.info(f"  {name}: {len(results)} results")
 
         # ── Step 3: Fusion ───────────────────────────────────────────────
-        if mode in ["fusion", "agent"]:
+        if mode == "fusion":
             log.info("Step 3: Fusing branches...")
             _WEIGHT_ATTR_MAP = {
                 "clip": "weight_clip",
@@ -376,8 +354,6 @@ class OnlinePipeline:
             fused = branch_results.get("ocr_bm25", [])
             limit = cfg.temporal_top_k * 2 if use_temporal else final_top_k
             fused = fused[:limit]
-        elif mode == "action":
-            fused = branch_results.get("action", [])
         else:
             log.info(f"Step 3: Bypassing fusion, returning raw {mode} results...")
             fused = branch_results.get(mode, [])

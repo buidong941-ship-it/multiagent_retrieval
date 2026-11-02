@@ -1,8 +1,8 @@
 """
 Image embedding service.
 
-Encodes extracted frames using SigLIP2 (or OpenCLIP fallback)
-and inserts embeddings into Milvus.
+Encodes extracted frames using the active backends (SigLIP2 / Jina CLIP v2 / BEiT-3)
+and inserts embeddings into the FAISS vector database.
 """
 
 from __future__ import annotations
@@ -35,9 +35,6 @@ def build_embedder(config: EmbeddingConfig, backend: EmbeddingBackend) -> BaseEm
     """
     if backend == EmbeddingBackend.SIGLIP2:
         return SigLIP2Embedder(config)
-    elif backend == EmbeddingBackend.OPENCLIP:
-        from models.embedding.openclip_model import OpenCLIPEmbedder  # optional import
-        return OpenCLIPEmbedder(config)
     elif backend == EmbeddingBackend.JINA:
         from models.embedding.jina_model import JinaClipEmbedder
         return JinaClipEmbedder(config)
@@ -79,7 +76,7 @@ class ImageEmbeddingService:
 
         Args:
             config:    EmbeddingConfig.
-            vector_db: MilvusVectorDatabase for storing vectors.
+            vector_db: Vector database (FAISS) for storing vectors.
             meta_db:   MetadataDatabase for updating milvus_clip_id.
             backend:   The backend to use if embedder is not provided.
             collection_name: Name of the vector DB collection.

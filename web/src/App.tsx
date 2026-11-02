@@ -12,7 +12,6 @@ const MODES = [
   { id: 'siglip_jina_sequence',icon: '🔥', label: 'SigLIP + Jina Sequence (PRF)', badge: null,  isAgent: false },
   { id: 'siglip_jina_parallel',icon: '⚡', label: 'SigLIP + Jina Parallel (RRF)', badge: 'New',  isAgent: false },
   { id: 'clip',       icon: '🖼️', label: 'CLIP Semantic',    badge: null,   isAgent: false },
-  { id: 'action',     icon: '🏃', label: 'Action Search',    badge: null,   isAgent: false },
   { id: 'ocr_bm25',   icon: '🤖', label: 'OCR + BM25',       badge: null,   isAgent: false },
   { id: 'direct_ocr', icon: '🔤', label: 'Direct OCR',       badge: null,   isAgent: false },
   { id: 'object',     icon: '📦', label: 'YOLO Objects',     badge: null,   isAgent: false },

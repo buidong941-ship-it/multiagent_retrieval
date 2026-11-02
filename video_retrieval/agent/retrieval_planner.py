@@ -56,32 +56,7 @@ class RetrievalPlanner:
                     "tool": "AttributeSearch",
                     "args": {"query": attr}
                 })
-                
-        # 6. Nếu có Temporal Relation
-        temporal = parsed_query.get("temporal_relation", "none")
-        events = parsed_query.get("events", [])
-        if temporal != "none" and len(events) >= 2:
-            event1 = events[0]["description"]
-            event2 = events[1]["description"]
-            if temporal == "after":
-                plan.append({
-                    "tool": "SequenceSearch", 
-                    "args": {"first_query": event1, "then_query": event2, "relation": "after"}
-                })
-            elif temporal == "before":
-                plan.append({
-                    "tool": "SequenceSearch",
-                    "args": {"first_query": event1, "then_query": event2, "relation": "before"}
-                })
 
-        # 7. Nếu có Spatial Relations
-        spatial = parsed_query.get("spatial_relations", [])
-        if spatial:
-            for rel in spatial:
-                plan.append({
-                    "tool": "SpatialReasoning",
-                    "args": {"relation": rel, "objects": parsed_query.get("objects", [])}
-                })
 
         log.info(f"Generated Execution Plan: {[step['tool'] for step in plan]}")
         return plan

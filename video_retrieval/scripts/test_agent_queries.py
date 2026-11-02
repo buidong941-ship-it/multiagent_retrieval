@@ -19,7 +19,6 @@ async def run_queries():
     from database.faiss.faiss_client import FaissVectorDatabase
     from database.bm25.bm25_index import BM25OcrIndex
     from services.embedding.image_embedding_service import ImageEmbeddingService
-    from services.ocr.ocr_service import OCRService
     from pipelines.online_pipeline import OnlinePipeline
 
     setup_logging(log_level="INFO")
@@ -36,14 +35,12 @@ async def run_queries():
         bm25.load()
     except FileNotFoundError:
         pass
-    ocr_svc = OCRService(settings.ocr, vector_db, meta_db, bm25_index=bm25)
 
     online = OnlinePipeline(
         settings=settings,
         meta_db=meta_db,
         vector_db=vector_db,
-        embed_svc=embed_svc,
-        ocr_svc=ocr_svc,
+        embed_svcs=[embed_svc],
         bm25_index=bm25,
     )
 

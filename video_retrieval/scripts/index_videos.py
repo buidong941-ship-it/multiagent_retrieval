@@ -15,9 +15,6 @@ import os
 import sys
 from pathlib import Path
 
-# Prevent gRPC keepalive ping flood when using Milvus Lite with long idle times
-os.environ["GRPC_KEEPALIVE_TIME_MS"] = "600000"
-os.environ["GRPC_KEEPALIVE_TIMEOUT_MS"] = "600000"
 # Disable Paddle PIR API to fix bug in PaddlePaddle 3.0+ (ConvertPirAttribute2RuntimeAttribute error)
 os.environ["FLAGS_enable_pir_api"] = "0"
 
@@ -98,15 +95,14 @@ async def main() -> None:
         print("Error: provide --video_dir or --video_path")
         sys.exit(1)
 
-    # Crucial for Milvus Lite: explicitly flush all collections before close
+    # Persist FAISS collections to disk before exit
     print("Flushing all collections to disk...")
     try:
         pipeline.vector_db.flush("clip_embeddings")
-        pipeline.vector_db.flush("action_embeddings")
     except Exception as e:
         print(f"Flush warning: {e}")
 
-    # Crucial for Milvus Lite: close to stop background threads
+    # close() flushes every collection and releases memory
     if hasattr(pipeline.vector_db, "close"):
         pipeline.vector_db.close()
         

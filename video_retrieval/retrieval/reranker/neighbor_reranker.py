@@ -19,8 +19,7 @@ import numpy as np
 
 from config.retrieval_config import RetrievalConfig
 from database.metadata.metadata_db import MetadataDatabase
-from database.milvus.milvus_client import MilvusVectorDatabase
-from interfaces.base_interfaces import ParsedQuery, RetrievalResult
+from interfaces.base_interfaces import BaseVectorDatabase, ParsedQuery, RetrievalResult
 from services.embedding.image_embedding_service import ImageEmbeddingService
 from utils.logging_utils import get_logger
 
@@ -37,7 +36,7 @@ class NeighborReranker:
         self,
         config: RetrievalConfig,
         meta_db: MetadataDatabase,
-        vector_db: MilvusVectorDatabase,
+        vector_db: BaseVectorDatabase,
         embedding_svc: ImageEmbeddingService,
     ) -> None:
         self.config = config

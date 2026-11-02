@@ -6,7 +6,7 @@ Design Principles:
     - This enables:
         * Dependency Injection (inject any conformant implementation)
         * Testability (mock/stub via interface)
-        * Swappability (e.g., swap SigLIP2 → OpenCLIP without touching services)
+        * Swappability (e.g., swap SigLIP2 → Jina CLIP without touching services)
     - All interfaces use Protocol or ABC — prefer ABC for explicit contracts.
 
 Interfaces defined:
@@ -110,7 +110,7 @@ class BaseEmbedder(ABC):
     """
     Abstract interface for image and text embedding models.
 
-    Implementations: SigLIP2Embedder, OpenCLIPEmbedder.
+    Implementations: SigLIP2Embedder, JinaClipEmbedder, Beit3Embedder.
     """
 
     @abstractmethod
@@ -291,20 +291,20 @@ class BaseBM25Index(ABC):
 
 
 class BaseMetadataDB(ABC):
-    """Abstract interface for the metadata database (SQLAlchemy / SQLite)."""
+    """Abstract interface for the metadata database (async SQLAlchemy / SQLite)."""
 
     @abstractmethod
-    def get_frame(self, frame_id: str) -> Optional[dict[str, Any]]:
+    async def get_frame_async(self, frame_id: str) -> Optional[dict[str, Any]]:
         """Return frame metadata by frame_id."""
         ...
 
     @abstractmethod
-    def get_frames_by_video(self, video_id: str) -> list[dict[str, Any]]:
+    async def get_frames_by_video_async(self, video_id: str) -> list[dict[str, Any]]:
         """Return all frames for a video, ordered by frame_idx."""
         ...
 
     @abstractmethod
-    def get_neighbouring_frames(
+    async def get_neighbouring_frames_async(
         self,
         video_id: str,
         frame_idx: int,
@@ -318,10 +318,10 @@ class BaseMetadataDB(ABC):
         ...
 
     @abstractmethod
-    def get_frames_by_objects(
-        self, class_names: list[str], min_confidence: float
-    ) -> list[str]:
-        """Return frame_ids that contain ALL of the given object classes."""
+    async def get_frames_by_objects_async(
+        self, class_names: list[str], min_confidence: float = 0.3
+    ) -> list[tuple[str, float]]:
+        """Return (frame_id, avg_confidence) for frames containing ALL given object classes."""
         ...
 
 

@@ -5,7 +5,7 @@ Usage:
     from config.settings import settings
 
     settings.embedding.batch_size
-    settings.milvus.host
+    settings.faiss.index_dir
     settings.retrieval.clip_top_k
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from config.database_config import MilvusConfig, FaissConfig
+from config.database_config import FaissConfig
 from config.detection_config import DetectionConfig
 from config.embedding_config import EmbeddingConfig
 from config.frame_config import FrameExtractionConfig
@@ -29,7 +29,6 @@ class Settings:
         self.embedding = EmbeddingConfig()
         self.ocr = OCRConfig()
         self.detection = DetectionConfig()
-        self.milvus = MilvusConfig()
         self.faiss = FaissConfig()
         self.retrieval = RetrievalConfig()
 

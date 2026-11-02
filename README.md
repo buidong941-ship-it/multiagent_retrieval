@@ -4,7 +4,7 @@ Hệ thống Tìm kiếm Video Thông minh (Multi-modal Video Retrieval System) 
 
 ## 📂 Cấu trúc thư mục (Project Structure)
 
-Toàn bộ giải pháp được chia thành 3 phần chính:
+Toàn bộ giải pháp được chia thành các phần chính:
 
 - **`video_retrieval/`** (Python / FastAPI)
   - Hệ thống Backend xử lý cốt lõi. Chứa toàn bộ Pipeline (Offline extraction & Online retrieval).
@@ -13,8 +13,8 @@ Toàn bộ giải pháp được chia thành 3 phần chính:
 - **`web/`** (React / TypeScript / Vite)
   - Giao diện người dùng (Frontend).
   - Cho phép người dùng nhập query, hiển thị kết quả, trích xuất metadata và xem trực tiếp video tại khung hình (frame) được chỉ định.
-- **`model_training/`**
-  - Chứa mã nguồn để fine-tune các mô hình AI trên tập dữ liệu đặc thù của cuộc thi.
+- **`merge/`**
+  - Script gộp nhiều bộ index (FAISS, SQLite, BM25) chạy từ Kaggle thành một bộ duy nhất.
 
 ## 🚀 Hướng dẫn khởi động nhanh (Quick Start)
 

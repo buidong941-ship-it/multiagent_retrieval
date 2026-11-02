@@ -181,10 +181,6 @@ class MetadataDatabase(BaseMetadataDB):
             await sess.execute(stmt)
         log.debug(f"Bulk upserted {len(frames_data)} frames")
 
-    def get_frame(self, frame_id: str) -> Optional[dict[str, Any]]:
-        """Sync-compatible: Return frame metadata by frame_id (placeholder)."""
-        raise NotImplementedError("Use async get_frame_async instead")
-
     async def get_frame_async(self, frame_id: str) -> Optional[dict[str, Any]]:
         """
         Return frame metadata dict by frame_id.
@@ -202,10 +198,6 @@ class MetadataDatabase(BaseMetadataDB):
             if frame is None:
                 return None
             return self._frame_to_dict(frame)
-
-    def get_frames_by_video(self, video_id: str) -> list[dict[str, Any]]:
-        """Placeholder — use async version."""
-        raise NotImplementedError("Use get_frames_by_video_async")
 
     async def get_frames_by_video_async(
         self, video_id: str
@@ -228,12 +220,6 @@ class MetadataDatabase(BaseMetadataDB):
             result = await sess.execute(stmt)
             frames = result.scalars().all()
             return [self._frame_to_dict(f) for f in frames]
-
-    def get_neighbouring_frames(
-        self, video_id: str, frame_idx: int, window: int
-    ) -> list[dict[str, Any]]:
-        """Placeholder — use async version."""
-        raise NotImplementedError("Use get_neighbouring_frames_async")
 
     async def get_neighbouring_frames_async(
         self, video_id: str, frame_idx: int, window: int
@@ -269,12 +255,6 @@ class MetadataDatabase(BaseMetadataDB):
             result = await sess.execute(stmt)
             frames = result.scalars().all()
             return [self._frame_to_dict(f) for f in frames]
-
-    def get_frames_by_objects(
-        self, class_names: list[str], min_confidence: float
-    ) -> list[str]:
-        """Placeholder — use async version."""
-        raise NotImplementedError("Use get_frames_by_objects_async")
 
     async def get_frames_by_objects_async(
         self, class_names: list[str], min_confidence: float = 0.3
