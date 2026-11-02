@@ -90,8 +90,8 @@ class Frame(Base):
         frame_idx       — 0-based frame index within video
         timestamp       — time offset in seconds
         frame_path      — path to saved JPEG/PNG
-        milvus_clip_id  — corresponding ID in Milvus clip_embeddings collection
-        milvus_ocr_id   — corresponding ID in Milvus ocr_embeddings collection (nullable)
+        milvus_clip_id  — int64 ID of this frame in the FAISS clip_embeddings collection
+        milvus_ocr_id   — int64 ID in the FAISS ocr_embeddings collection (nullable)
         ocr_results     — JSON: list of {text, confidence, bbox}
         ocr_text        — concatenated OCR text (for BM25 search)
         caption         — optional image caption
@@ -112,7 +112,8 @@ class Frame(Base):
     timestamp: Mapped[float] = mapped_column(Float, nullable=False)
     frame_path: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Milvus IDs (int64 primary keys in Milvus collections)
+    # Vector IDs (int64 keys in the FAISS collections).
+    # Column names keep the historical "milvus_" prefix for compatibility with existing DBs.
     milvus_clip_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     milvus_beit3_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     milvus_ocr_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

@@ -290,22 +290,3 @@ async def health_check() -> HealthResponse:
         milvus=milvus_status,
         database=db_status,
     )
-@app.get("/api/debug_search")
-async def debug_search():
-    if _offline_pipeline is None:
-        return {"error": "Pipeline not initialized"}
-    try:
-        import numpy as np
-        client = _offline_pipeline.vector_db._client
-        client.load_collection("clip_embeddings")
-        res = client.search(
-            collection_name="clip_embeddings",
-            data=[np.zeros(1152).tolist()],
-            anns_field="embedding",
-            search_params={"metric_type": "COSINE", "params": {"ef": 10}},
-            limit=1,
-            output_fields=["frame_id", "video_id"]
-        )
-        return {"raw_results": res}
-    except Exception as e:
-        return {"error": str(e)}

@@ -96,7 +96,7 @@ class ImageEmbeddingService:
         self._last_kept_embeddings: dict[str, np.ndarray] = {}
 
     def setup_collection(self) -> None:
-        """Ensure the Milvus clip collection exists with HNSW index."""
+        """Ensure the FAISS collection for this backend exists."""
         self.vector_db.create_collection_if_not_exists(self._collection, dim=self.embedder.embedding_dim)
 
     async def embed_frames(
@@ -106,12 +106,12 @@ class ImageEmbeddingService:
         perform_dedup: bool = True,
     ) -> list[FrameRecord]:
         """
-        Run embedding extraction and insert into Milvus.
+        Run embedding extraction and insert into the FAISS vector DB.
         Returns the list of frames that were actually inserted (deduplicated).
 
         Args:
             frames: List of FrameRecord objects.
-            id_offset: Starting integer ID for Milvus (avoids collisions
+            id_offset: Starting integer vector ID (avoids collisions
                        across multiple videos).
             perform_dedup: If True, performs frame filtering based on cosine similarity.
                            Typically only the first embedding pass should dedup to avoid
@@ -190,7 +190,7 @@ class ImageEmbeddingService:
             if not filtered_embeddings:
                 continue
 
-            # Insert into Milvus
+            # Insert into FAISS
             self.vector_db.insert(
                 collection_name=self._collection,
                 ids=filtered_milvus_ids,

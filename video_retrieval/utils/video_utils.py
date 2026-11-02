@@ -10,7 +10,6 @@ from typing import Generator, Optional
 
 import cv2
 import numpy as np
-from PIL import Image
 
 from utils.logging_utils import get_logger
 
@@ -224,20 +223,6 @@ def save_frame(
         cv2.imwrite(output_path, frame)
 
     return os.path.abspath(output_path)
-
-
-def load_image_rgb(image_path: str) -> Image.Image:
-    """
-    Load an image as PIL RGB Image.
-
-    Args:
-        image_path: Path to image file.
-
-    Returns:
-        PIL Image in RGB mode.
-    """
-    img = Image.open(image_path).convert("RGB")
-    return img
 
 
 def build_frame_id(video_id: str, frame_idx: int) -> str:

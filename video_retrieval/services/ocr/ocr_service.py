@@ -1,6 +1,6 @@
 """
 OCR service: runs PaddleOCR on frames, embeds with BGE-M3,
-builds BM25 index, and stores results in Milvus + SQLite.
+builds BM25 index, and stores results in FAISS + SQLite.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class OCRService:
 
         Args:
             config:     OCRConfig.
-            vector_db:  Milvus client.
+            vector_db:  FAISS vector database.
             meta_db:    SQLite metadata DB.
             ocr_model:  Optional pre-built OCR model (DI).
             embedder:   Optional pre-built BGE-M3 embedder (DI).
@@ -77,7 +77,7 @@ class OCRService:
         self._collection = "ocr_embeddings"
 
     def setup_collection(self) -> None:
-        """Ensure Milvus OCR collection exists."""
+        """Ensure the FAISS OCR collection exists."""
         self.vector_db.create_collection_if_not_exists(self._collection, dim=self.config.bge_embedding_dim)
 
     async def process_frames(
@@ -91,7 +91,7 @@ class OCRService:
 
         Args:
             frames:      List of FrameRecord with frame_path.
-            id_offset:   Starting Milvus int64 ID.
+            id_offset:   Starting int64 vector ID.
             skip_empty:  If True, skip frames with no OCR text.
         """
         self.setup_collection()
@@ -99,7 +99,7 @@ class OCRService:
 
         all_texts: list[str] = []     # for BGE-M3 batch encoding
         all_frame_ids: list[str] = [] # for BM25 doc_ids
-        embed_batch: list[dict] = []  # metadata for Milvus
+        embed_batch: list[dict] = []  # metadata for FAISS
         embed_ids: list[int] = []
 
         for i, frame in enumerate(tqdm(frames, desc="OCR", unit="frame")):
@@ -144,7 +144,7 @@ class OCRService:
                 {
                     "frame_id": frame.frame_id,
                     "video_id": frame.video_id,
-                    "ocr_text": ocr_text[:4000],  # Milvus VARCHAR limit
+                    "ocr_text": ocr_text[:4000],  # cap stored text length
                 }
             )
 

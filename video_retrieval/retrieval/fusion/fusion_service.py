@@ -1,21 +1,15 @@
 """
 Multi-branch score fusion.
 
-Design: Reciprocal Rank Fusion (RRF) + Weighted Score Normalization.
+Implementations:
+    - SmaxWeightedFusion (used by OnlinePipeline):
+        each frame accumulates normalized_weight * (score / branch_max_score).
+    - WeightedFusion:
+        min-max normalize each branch to [0, 1], then weighted sum.
 
-Why RRF over simple weighted sum:
-    - RRF is robust to score scale differences across branches
-      (BM25 scores are in [0, ∞), Milvus COSINE in [0, 1])
-    - Simple normalization is sufficient ONLY when all branches
-      have comparable score distributions
-    - RRF: score(d) = Σ weight_i / (k + rank_i(d))
-
-Strategy:
-    1. Min-max normalize each branch's scores to [0, 1]
-    2. Compute weighted sum across branches
-    3. De-duplicate by frame_id (keep highest combined score)
-    4. Sort by final score descending
-    5. Return top_k
+Both de-duplicate by frame_id and return the top_k frames by fused score.
+(BM25 scores live in [0, ∞) while vector similarities live in [-1, 1],
+hence the per-branch normalization.)
 """
 
 from __future__ import annotations
@@ -27,9 +21,6 @@ from interfaces.base_interfaces import BaseFusion, ParsedQuery, RetrievalResult
 from utils.logging_utils import get_logger
 
 log = get_logger(__name__)
-
-# RRF constant k (higher = less impact of rank position)
-RRF_K = 60
 
 
 class WeightedFusion(BaseFusion):
@@ -115,74 +106,6 @@ class WeightedFusion(BaseFusion):
             f"{len(fused)} unique → returning top {top_k}"
         )
 
-        return fused[:top_k]
-
-
-class RRFFusion(BaseFusion):
-    """
-    Reciprocal Rank Fusion — more robust than weighted score fusion.
-
-    Each branch contributes: weight / (k + rank)
-    where rank is 1-indexed position in sorted results.
-
-    Attributes:
-        config: RetrievalConfig.
-        k:      RRF smoothing constant (default 60).
-    """
-
-    def __init__(self, config: RetrievalConfig, k: int = RRF_K) -> None:
-        self.config = config
-        self.k = k
-
-    def fuse(
-        self,
-        branch_results: dict[str, list[RetrievalResult]],
-        weights: dict[str, float],
-        top_k: int,
-    ) -> list[RetrievalResult]:
-        """
-        Apply Reciprocal Rank Fusion.
-
-        Args:
-            branch_results: Dict branch_name → results (already sorted by score).
-            weights:        Dict branch_name → weight.
-            top_k:          Final number of results.
-
-        Returns:
-            RRF-fused, deduplicated results.
-        """
-        frame_rrf: dict[str, float] = defaultdict(float)
-        frame_data: dict[str, RetrievalResult] = {}
-        frame_sources: dict[str, set[str]] = defaultdict(set)
-
-        for branch_name, results in branch_results.items():
-            weight = weights.get(branch_name, 1.0)
-            if weight == 0.0 or not results:
-                continue
-
-            for rank, result in enumerate(results, start=1):
-                rrf_score = weight / (self.k + rank)
-                frame_rrf[result.frame_id] += rrf_score
-                frame_sources[result.frame_id].add(branch_name)
-
-                if result.frame_id not in frame_data:
-                    frame_data[result.frame_id] = result
-
-        fused = [
-            RetrievalResult(
-                frame_id=fid,
-                video_id=frame_data[fid].video_id,
-                frame_idx=frame_data[fid].frame_idx,
-                timestamp=frame_data[fid].timestamp,
-                frame_path=frame_data[fid].frame_path,
-                score=score,
-                source=f"rrf ({', '.join(sorted(frame_sources[fid]))})",
-            )
-            for fid, score in frame_rrf.items()
-        ]
-
-        fused.sort(key=lambda r: r.score, reverse=True)
-        log.info(f"RRF Fusion → {len(fused)} unique frames → top {top_k}")
         return fused[:top_k]
 
 

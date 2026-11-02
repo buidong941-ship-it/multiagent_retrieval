@@ -125,17 +125,6 @@ class MetadataDatabase(BaseMetadataDB):
                 "total_frames": video.total_frames,
             }
 
-    async def get_video_fps_async(self, video_id: str) -> Optional[float]:
-        """Return the FPS of a video by video_id, or None if not found.
-
-        Used by _TemporalCache in agent_tools to convert window_seconds
-        into the correct number of frames for neighbour lookups.
-        """
-        async with self.session() as sess:
-            stmt = select(Video.fps).where(Video.video_id == video_id)
-            result = await sess.execute(stmt)
-            return result.scalar_one_or_none()
-
     # ── Frame operations ─────────────────────────────────────────────────
 
     async def upsert_frame(self, frame_data: dict[str, Any]) -> None:

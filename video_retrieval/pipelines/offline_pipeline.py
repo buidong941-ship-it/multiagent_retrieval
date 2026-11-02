@@ -3,8 +3,8 @@ Offline Indexing Pipeline.
 
 Orchestrates all offline processing steps:
     1. Frame extraction
-    2. Image embedding (SigLIP2 → Milvus)
-    3. OCR (PaddleOCR → BM25 + BGE-M3 → Milvus)
+    2. Image embedding (SigLIP2 / Jina / BEiT-3 → FAISS)
+    3. OCR (PaddleOCR → BM25 + BGE-M3 → FAISS)
     4. Object detection (YOLOv11 → SQLite)
 
 Design:
@@ -97,7 +97,7 @@ class OfflinePipeline:
         self.detection_svc = DetectionService(settings.detection, self.meta_db)
 
     async def initialize(self) -> None:
-        """Initialize database tables and Milvus collections."""
+        """Initialize database tables and FAISS collections."""
         log.info("Initializing databases...")
         await self.meta_db.init_db()
         for svc in self.embed_svcs:
